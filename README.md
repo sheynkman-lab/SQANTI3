@@ -1,6 +1,6 @@
 # SQANTI3
 
-Last Updated: 12/16/2020 (v1.6)   SQANTI3 release!
+Last Updated: 02/09/2021 (v1.6.1)   Update on isoAnnot lite and minor changes to v1.6
 
 ## What is SQANTI3?
 
@@ -39,6 +39,8 @@ New features implemented in SQANTI3 not available in previous versions are:
 <a name="Updates"/>
 
 ## Updates
+
+2021.02.09 - updated to v1.6.1. SQANTI3 now reports in the classification file the genomic coordinates of CAGE peaks. New version of isoAnnot Lite (v2.1).
 
 2020.12.16 - updated to v1.6. Fixed `SQANTI3_report.R` num isoforms per gene plotting error.
 
@@ -521,8 +523,9 @@ The output `_classification.txt` has the following fields:
 36. `seq_A_downstream_TTS`: sequence of the downstream 20 bp window.
 37. `dist_peak`: distance to closest TSS based on CAGE Peak data. Negative means upstream of TSS and positive means downstream of TSS. Strand-specific. SQANTI3 only searches for nearby CAGE Peaks within 10000 bp of the PacBio transcript start site. Will be `NA` if none are found within 10000 bp.
 38. `within_peak`: TRUE if the PacBio transcript start site is within a CAGE Peak. 
-39. `polyA_motif`: if `--polyA_motif_list` is given, shows the top ranking polyA motif found within 50 bp upstream of end.
-40. `polyA_dist`: if `--polyA_motif_list` is given, shows the location of the  last base of the hexamer. Position 0 is the putative poly(A) site. This distance is hence always negative because it is upstream. 
+39. `pos_cage_peak`: First genomic coordinate of the CAGE peak.
+40. `polyA_motif`: if `--polyA_motif_list` is given, shows the top ranking polyA motif found within 50 bp upstream of end.
+41. `polyA_dist`: if `--polyA_motif_list` is given, shows the location of the  last base of the hexamer. Position 0 is the putative poly(A) site. This distance is hence always negative because it is upstream. 
 
 
 <a name="junction"/>

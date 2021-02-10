@@ -115,7 +115,7 @@ FIELDS_CLASS = ['isoform', 'chrom', 'strand', 'length',  'exons',  'structural_c
                 'FSM_class',   'coding', 'ORF_length', 'CDS_length', 'CDS_start',
                 'CDS_end', 'CDS_genomic_start', 'CDS_genomic_end', 'predicted_NMD',
                 'perc_A_downstream_TTS', 'seq_A_downstream_TTS',
-                'dist_to_cage_peak', 'within_cage_peak',
+                'dist_to_cage_peak', 'within_cage_peak', 'pos_cage_peak',
                 'dist_to_polya_site', 'within_polya_site',
                 'polyA_motif', 'polyA_dist', 'ORF_seq']
 
@@ -226,7 +226,7 @@ class myQueryTranscripts:
                  q_splicesite_hit = 0,
                  q_exon_overlap = 0,
                  FSM_class = None, percAdownTTS = None, seqAdownTTS=None,
-                 dist_cage='NA', within_cage='NA',
+                 dist_cage='NA', within_cage='NA', pos_cage_peak='NA',
                  dist_polya_site='NA', within_polya_site='NA',
                  polyA_motif='NA', polyA_dist='NA'):
 
@@ -277,6 +277,7 @@ class myQueryTranscripts:
         self.seqAdownTTS  = seqAdownTTS
         self.dist_cage   = dist_cage
         self.within_cage = within_cage
+        self.pos_cage_peak = pos_cage_peak
         self.within_polya_site = within_polya_site
         self.dist_polya_site   = dist_polya_site    # distance to the closest polyA site (--polyA_peak, BEF file)
         self.polyA_motif = polyA_motif
@@ -328,7 +329,7 @@ class myQueryTranscripts:
                                                                                                                                                            str(self.percAdownTTS),
                                                                                                                                                            str(self.seqAdownTTS),
                                                                                                                                                            str(self.dist_cage),
-                                                                                                                                                           str(self.within_cage),
+                                                                                                                                                           str(self.within_cage),str(self.pos_cage_peak),
                                                                                                                                                            str(self.dist_polya_site),
                                                                                                                                                            str(self.within_polya_site),
                                                                                                                                                            str(self.polyA_motif),
@@ -378,6 +379,7 @@ class myQueryTranscripts:
          'seq_A_downstream_TTS': self.seqAdownTTS,
          'dist_to_cage_peak': self.dist_cage,
          'within_cage_peak': self.within_cage,
+         'pos_cage_peak' : self.pos_cage_peak,
          'dist_to_polya_site': self.dist_polya_site,
          'within_polya_site': self.within_polya_site,
          'polyA_motif': self.polyA_motif,
@@ -1527,11 +1529,12 @@ def isoformClassification(args, isoforms_by_chr, refs_1exon_by_chr, refs_exons_b
             # look at Cage Peak info (if available)
             if cage_peak_obj is not None:
                 if rec.strand == '+':
-                    within_cage, dist_cage = cage_peak_obj.find(rec.chrom, rec.strand, rec.txStart)
+                    within_cage, dist_cage , pos_cage_peak = cage_peak_obj.find(rec.chrom, rec.strand, rec.txStart)
                 else:
-                    within_cage, dist_cage = cage_peak_obj.find(rec.chrom, rec.strand, rec.txEnd)
+                    within_cage, dist_cage , pos_cage_peak = cage_peak_obj.find(rec.chrom, rec.strand, rec.txEnd)
                 isoform_hit.within_cage = within_cage
                 isoform_hit.dist_cage = dist_cage
+                isoform_hit.pos_cage_peak = pos_cage_peak
 
             # look at PolyA Peak info (if available)
             if polya_peak_obj is not None:
@@ -2017,7 +2020,7 @@ class CAGEPeak:
         dist to TSS is 0 if right on spot
         dist to TSS is + if downstream, - if upstream (watch for strand!!!)
         """
-        within_peak, dist_peak = False, 'NA'
+        within_peak, dist_peak, peak_coord = False, 'NA' , 'NA'
         for (tss0,start0,end1) in self.cage_peaks[(chrom,strand)].find(query-search_window, query+search_window):
  # Skip those cage peaks that are downstream the detected TSS because degradation just make the transcript shorter
             if strand=='+' and start0>int(query) and end1>int(query):
@@ -2030,8 +2033,8 @@ class CAGEPeak:
             else:
                 d = (query - tss0) * (-1 if strand=='-' else +1)
                 if abs(d) < abs(dist_peak):
-                    within_peak, dist_peak = (start0<=query<end1), d
-        return within_peak, dist_peak
+                    within_peak, dist_peak , peak_coord = (start0<=query<end1), d, tss0
+        return within_peak, dist_peak, peak_coord
 
 class PolyAPeak:
     def __init__(self, polya_bed_filename):
