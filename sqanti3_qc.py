@@ -3,6 +3,7 @@
 # Authors: Lorena de la Fuente, Hector del Risco, Cecile Pereira and Manuel Tardaguila
 # Modified by Liz (etseng@pacb.com) as SQANTI2/3 versions
 # Modified by Fran (francisco.pardo.palacios@gmail.com) currently as SQANTI3 version (05/15/2020)
+# Modified by Gloria (gs9yr@virginia.edu) for protein classification
 
 __author__  = "etseng@pacb.com"
 __version__ = '2.0.0'  # Python 3.7
@@ -2178,159 +2179,219 @@ def combine_split_runs(args, split_dirs):
             print("ERROR running command: {0}".format(cmd), file=sys.stderr)
             sys.exit(-1)
 
+
+###############################
+##### start of sqanti run #####
+###############################
+
+
 def main():
-    global utilitiesPath
 
-    #arguments
-    parser = argparse.ArgumentParser(description="Structural and Quality Annotation of Novel Transcript Isoforms")
-    parser.add_argument('isoforms', help='\tIsoforms (FASTA/FASTQ) or GTF format. Recommend provide GTF format with the --gtf option.')
-    parser.add_argument('annotation', help='\t\tReference annotation file (GTF format)')
-    parser.add_argument('genome', help='\t\tReference genome (Fasta format)')
-    parser.add_argument("--min_ref_len", type=int, default=200, help="\t\tMinimum reference transcript length (default: 200 bp)")
-    parser.add_argument("--force_id_ignore", action="store_true", default=False, help="\t\t Allow the usage of transcript IDs non related with PacBio's nomenclature (PB.X.Y)")
-    parser.add_argument("--aligner_choice", choices=['minimap2', 'deSALT', 'gmap'], default='minimap2')
-    parser.add_argument('--cage_peak', help='\t\tFANTOM5 Cage Peak (BED format, optional)')
-    parser.add_argument("--polyA_motif_list", help="\t\tRanked list of polyA motifs (text, optional)")
-    parser.add_argument("--polyA_peak", help='\t\tPolyA Peak (BED format, optional)')
-    parser.add_argument("--phyloP_bed", help="\t\tPhyloP BED for conservation score (BED, optional)")
-    parser.add_argument("--skipORF", default=False, action="store_true", help="\t\tSkip ORF prediction (to save time)")
-    parser.add_argument("--is_fusion", default=False, action="store_true", help="\t\tInput are fusion isoforms, must supply GTF as input using --gtf")
-    parser.add_argument("--orf_input", help="\t\tInput fasta to run ORF on. By default, ORF is run on genome-corrected fasta - this overrides it. If input is fusion (--is_fusion), this must be provided for ORF prediction.")
-    parser.add_argument('-g', '--gtf', help='\t\tUse when running SQANTI by using as input a gtf of isoforms', action='store_true')
-    parser.add_argument('-e','--expression', help='\t\tExpression matrix (supported: Kallisto tsv)', required=False)
-    parser.add_argument('-x','--gmap_index', help='\t\tPath and prefix of the reference index created by gmap_build. Mandatory if using GMAP unless -g option is specified.')
-    parser.add_argument('-t', '--cpus', default=10, type=int, help='\t\tNumber of threads used during alignment by aligners. (default: 10)')
-    parser.add_argument('-n', '--chunks', default=1, type=int, help='\t\tNumber of chunks to split SQANTI3 analysis in for speed up (default: 1).')
-    #parser.add_argument('-z', '--sense', help='\t\tOption that helps aligners know that the exons in you cDNA sequences are in the correct sense. Applicable just when you have a high quality set of cDNA sequences', required=False, action='store_true')
-    parser.add_argument('-o','--output', help='\t\tPrefix for output files.', required=False)
-    parser.add_argument('-d','--dir', help='\t\tDirectory for output files. Default: Directory where the script was run.', required=False)
-    parser.add_argument('-c','--coverage', help='\t\tJunction coverage files (provide a single file, comma-delmited filenames, or a file pattern, ex: "mydir/*.junctions").', required=False)
-    parser.add_argument('-s','--sites', default="ATAC,GCAG,GTAG", help='\t\tSet of splice sites to be considered as canonical (comma-separated list of splice sites). Default: GTAG,GCAG,ATAC.', required=False)
-    parser.add_argument('-w','--window', default="20", help='\t\tSize of the window in the genomic DNA screened for Adenine content downstream of TTS', required=False, type=int)
-    parser.add_argument('--genename', help='\t\tUse gene_name tag from GTF to define genes. Default: gene_id used to define genes', default=False, action='store_true')
-    parser.add_argument('-fl', '--fl_count', help='\t\tFull-length PacBio abundance file', required=False)
-    parser.add_argument("-v", "--version", help="Display program version number.", action='version', version='SQANTI3 '+str(__version__))
-    parser.add_argument("--skip_report", action="store_true", default=False, help=argparse.SUPPRESS)
-    parser.add_argument('--isoAnnotLite' , help='\t\tRun isoAnnot Lite to output a tappAS-compatible gff3 file',required=False, action='store_true' , default=False)
-    parser.add_argument('--gff3' , help='\t\tPrecomputed tappAS species specific GFF3 file. It will serve as reference to transfer functional attributes',required=False)
+#### process exon-based comparisons ####
+
+Args = namedtuple('args', 'isoform annotation dir output')
+isoforms = os.path.abspath('./jurkat_files/jurkat_exon.gff')
+annotation = os.path.abspath('./gencode_files/gencode.gtf')
+odir = os.path.abspath('./')
+output = 'jurkat'
+args = Args(isoforms, annotation, odir, output)
+
+## parse reference transcripts(GTF) to dicts
+refs_1exon_by_chr, refs_exons_by_chr, junctions_by_chr, junctions_by_gene, start_ends_by_gene = reference_parser(args)
+
+## parse query isoforms
+isoforms_by_chr = isoforms_parser(args)
+
+# isoform classification
+isoforms_info = isoformClassification(args, isoforms_by_chr, refs_1exon_by_chr, refs_exons_by_chr, junctions_by_chr, junctions_by_gene, start_ends_by_gene)
 
 
-    args = parser.parse_args()
+#### process cds-based comparisons ####
 
-    if args.is_fusion:
-        if args.orf_input is None:
-            print("WARNING: Currently if --is_fusion is used, no ORFs will be predicted. Supply --orf_input if you want ORF to run!", file=sys.stderr)
-            args.skipORF = True
-        if not args.gtf:
-            print("ERROR: if --is_fusion is on, must supply GTF as input and use --gtf!", file=sys.stderr)
-            sys.exit(-1)
+Args = namedtuple('args', 'isoform annotation dir output')
+isoforms = os.path.abspath('./jurkat_files/jurkat_cds.gff')
+annotation = os.path.abspath('./gencode_files/gencode_cds.gtf')
+odir = os.path.abspath('./')
+output = 'jurkat'
+args = Args(isoforms, annotation, odir, output)
 
-    if args.gff3 is not None:
-        args.gff3 = os.path.abspath(args.gff3)
-        if not os.path.isfile(args.gff3):
-            print("ERROR: Precomputed tappAS GFF3 annoation file {0} doesn't exist. Abort!".format(args.genome), file=sys.stderr)
-            sys.exit(-1)
+## parse reference transcripts(GTF) to dicts
+refs_1exon_by_chr, refs_exons_by_chr, junctions_by_chr, junctions_by_gene, start_ends_by_gene = reference_parser(args)
 
-    if args.expression is not None:
-        if os.path.isdir(args.expression)==True:
-            print("Expression files located in {0} folder".format(args.expression), file=sys.stderr)
-        else:
-            for f in args.expression.split(','):
-                if not os.path.exists(f):
-                        print("Expression file {0} not found. Abort!".format(f), file=sys.stderr)
-                        sys.exit(-1)
+## parse query isoforms
+isoforms_by_chr = isoforms_parser(args)
+
+# isoform classification
+isoforms_info_cds = isoformClassification(args, isoforms_by_chr, refs_1exon_by_chr, refs_exons_by_chr, junctions_by_chr, junctions_by_gene, start_ends_by_gene)
 
 
-    # path and prefix for output files
-    if args.output is None:
-        args.output = os.path.splitext(os.path.basename(args.isoforms))[0]
+#### write out results
 
-    if args.dir is None:
-        args.dir = os.getcwd()
-    else:
-        args.dir = os.path.abspath(args.dir)
-        if os.path.isdir(args.dir):
-            print("WARNING: output directory {0} already exists. Overwriting!".format(args.dir), file=sys.stderr)
-        else:
-            os.makedirs(args.dir)
+with open('sqanti_prot_cmp_result_all_chr.tsv', 'w') as ofile:
+    ofile.write('pb\ttx_cat\tpr_cat\ttx_subcat\tpr_subcat\ttx_tss_diff\ttx_tts_diff\ttx_tss_gene_diff\ttx_tts_gene_diff\tpr_tss_diff\tpr_tts_diff\tpr_tss_gene_diff\tpr_tts_gene_diff\ttx_transcripts\tpr_transcripts\ttx_gene\tpr_gene\ttx_num_exons\tpr_num_exons\n')
+    for pb, pr in isoforms_info_cds.items():
+        tx = isoforms_info[pb]
+        odata = [pb, tx.str_class, pr.str_class, tx.subtype, pr.subtype, tx.tss_diff, tx.tts_diff, tx.tss_gene_diff, tx.tts_gene_diff, pr.tss_diff, pr.tts_diff, pr.tss_gene_diff, pr.tts_gene_diff,
+                 ','.join(tx.transcripts), ','.join(pr.transcripts), ','.join(tx.genes), ','.join(pr.genes),
+                 tx.num_exons, pr.num_exons]
+        ofile.write('\t'.join(map(str, odata)) + '\n')
 
-    args.genome = os.path.abspath(args.genome)
-    if not os.path.isfile(args.genome):
-        print("ERROR: genome fasta {0} doesn't exist. Abort!".format(args.genome), file=sys.stderr)
-        sys.exit()
-
-    args.isoforms = os.path.abspath(args.isoforms)
-    if not os.path.isfile(args.isoforms):
-        print("ERROR: Input isoforms {0} doesn't exist. Abort!".format(args.isoforms), file=sys.stderr)
-        sys.exit()
-
-    if not args.gtf:
-        if args.aligner_choice == 'gmap':
-            if not os.path.isdir(os.path.abspath(args.gmap_index)):
-                print("GMAP index {0} doesn't exist! Abort.".format(args.gmap_index), file=sys.stderr)
-                sys.exit()
-        elif args.aligner_choice == 'deSALT':
-            if not os.path.isdir(os.path.abspath(args.gmap_index)):
-                print("deSALT index {0} doesn't exist! Abort.".format(args.gmap_index), file=sys.stderr)
-                sys.exit()
-
-        print("Cleaning up isoform IDs...", file=sys.stderr)
-        args.isoforms = rename_isoform_seqids(args.isoforms, args.force_id_ignore)
-        print("Cleaned up isoform fasta file written to: {0}".format(args.isoforms), file=sys.stderr)
+# TODO - write a function that classifies, based on tx cat, pr cat, n/c-term matches, nmd status, and perfect subset status, the protein category
 
 
-    args.annotation = os.path.abspath(args.annotation)
-    if not os.path.isfile(args.annotation):
-        print("ERROR: Annotation doesn't exist. Abort!".format(args.annotation), file=sys.stderr)
-        sys.exit()
 
-    #if args.aligner_choice == "gmap":
-    #    args.sense = "sense_force" if args.sense else "auto"
-    #elif args.aligner_choice == "minimap2":
-    #    args.sense = "f" if args.sense else "b"
-    ## (Liz) turned off option for --sense, always TRUE
-    if args.aligner_choice == "gmap":
-        args.sense = "sense_force"
-    elif args.aligner_choice == "minimap2":
-        args.sense = "f"
-    #elif args.aligner_choice == "deSALT":  #deSALT does not support this yet
-    #    args.sense = "--trans-strand"
+    # global utilitiesPath
+
+    # #arguments
+    # parser = argparse.ArgumentParser(description="Structural and Quality Annotation of Novel Transcript Isoforms")
+    # parser.add_argument('isoforms', help='\tIsoforms (FASTA/FASTQ) or GTF format. Recommend provide GTF format with the --gtf option.')
+    # parser.add_argument('annotation', help='\t\tReference annotation file (GTF format)')
+    # parser.add_argument('genome', help='\t\tReference genome (Fasta format)')
+    # parser.add_argument("--min_ref_len", type=int, default=200, help="\t\tMinimum reference transcript length (default: 200 bp)")
+    # parser.add_argument("--force_id_ignore", action="store_true", default=False, help="\t\t Allow the usage of transcript IDs non related with PacBio's nomenclature (PB.X.Y)")
+    # parser.add_argument("--aligner_choice", choices=['minimap2', 'deSALT', 'gmap'], default='minimap2')
+    # parser.add_argument('--cage_peak', help='\t\tFANTOM5 Cage Peak (BED format, optional)')
+    # parser.add_argument("--polyA_motif_list", help="\t\tRanked list of polyA motifs (text, optional)")
+    # parser.add_argument("--polyA_peak", help='\t\tPolyA Peak (BED format, optional)')
+    # parser.add_argument("--phyloP_bed", help="\t\tPhyloP BED for conservation score (BED, optional)")
+    # parser.add_argument("--skipORF", default=False, action="store_true", help="\t\tSkip ORF prediction (to save time)")
+    # parser.add_argument("--is_fusion", default=False, action="store_true", help="\t\tInput are fusion isoforms, must supply GTF as input using --gtf")
+    # parser.add_argument("--orf_input", help="\t\tInput fasta to run ORF on. By default, ORF is run on genome-corrected fasta - this overrides it. If input is fusion (--is_fusion), this must be provided for ORF prediction.")
+    # parser.add_argument('-g', '--gtf', help='\t\tUse when running SQANTI by using as input a gtf of isoforms', action='store_true')
+    # parser.add_argument('-e','--expression', help='\t\tExpression matrix (supported: Kallisto tsv)', required=False)
+    # parser.add_argument('-x','--gmap_index', help='\t\tPath and prefix of the reference index created by gmap_build. Mandatory if using GMAP unless -g option is specified.')
+    # parser.add_argument('-t', '--cpus', default=10, type=int, help='\t\tNumber of threads used during alignment by aligners. (default: 10)')
+    # parser.add_argument('-n', '--chunks', default=1, type=int, help='\t\tNumber of chunks to split SQANTI3 analysis in for speed up (default: 1).')
+    # #parser.add_argument('-z', '--sense', help='\t\tOption that helps aligners know that the exons in you cDNA sequences are in the correct sense. Applicable just when you have a high quality set of cDNA sequences', required=False, action='store_true')
+    # parser.add_argument('-o','--output', help='\t\tPrefix for output files.', required=False)
+    # parser.add_argument('-d','--dir', help='\t\tDirectory for output files. Default: Directory where the script was run.', required=False)
+    # parser.add_argument('-c','--coverage', help='\t\tJunction coverage files (provide a single file, comma-delmited filenames, or a file pattern, ex: "mydir/*.junctions").', required=False)
+    # parser.add_argument('-s','--sites', default="ATAC,GCAG,GTAG", help='\t\tSet of splice sites to be considered as canonical (comma-separated list of splice sites). Default: GTAG,GCAG,ATAC.', required=False)
+    # parser.add_argument('-w','--window', default="20", help='\t\tSize of the window in the genomic DNA screened for Adenine content downstream of TTS', required=False, type=int)
+    # parser.add_argument('--genename', help='\t\tUse gene_name tag from GTF to define genes. Default: gene_id used to define genes', default=False, action='store_true')
+    # parser.add_argument('-fl', '--fl_count', help='\t\tFull-length PacBio abundance file', required=False)
+    # parser.add_argument("-v", "--version", help="Display program version number.", action='version', version='SQANTI3 '+str(__version__))
+    # parser.add_argument("--skip_report", action="store_true", default=False, help=argparse.SUPPRESS)
+    # parser.add_argument('--isoAnnotLite' , help='\t\tRun isoAnnot Lite to output a tappAS-compatible gff3 file',required=False, action='store_true' , default=False)
+    # parser.add_argument('--gff3' , help='\t\tPrecomputed tappAS species specific GFF3 file. It will serve as reference to transfer functional attributes',required=False)
 
 
-    args.novel_gene_prefix = None
-    # Print out parameters so can be put into report PDF later
-    args.doc = os.path.join(os.path.abspath(args.dir), args.output+".params.txt")
-    print("Write arguments to {0}...".format(args.doc, file=sys.stdout))
-    with open(args.doc, 'w') as f:
-        f.write("Version\t" + __version__ + "\n")
-        f.write("Input\t" + os.path.basename(args.isoforms) + "\n")
-        f.write("Annotation\t" + os.path.basename(args.annotation) + "\n")
-        f.write("Genome\t" + os.path.basename(args.genome) + "\n")
-        f.write("Aligner\t" + args.aligner_choice + "\n")
-        f.write("FLCount\t" + (os.path.basename(args.fl_count) if args.fl_count is not None else "NA") + "\n")
-        f.write("Expression\t" + (os.path.basename(args.expression) if args.expression is not None else "NA") + "\n")
-        f.write("Junction\t" + (os.path.basename(args.coverage) if args.coverage is not None else "NA") + "\n")
-        f.write("CagePeak\t" + (os.path.basename(args.cage_peak)  if args.cage_peak is not None else "NA") + "\n")
-        f.write("PolyA\t" + (os.path.basename(args.polyA_motif_list) if args.polyA_motif_list is not None else "NA") + "\n")
-        f.write("PolyAPeak\t" + (os.path.basename(args.polyA_peak)  if args.polyA_peak is not None else "NA") + "\n")
-        f.write("IsFusion\t" + str(args.is_fusion) + "\n")
+    # args = parser.parse_args()
+
+    # if args.is_fusion:
+    #     if args.orf_input is None:
+    #         print("WARNING: Currently if --is_fusion is used, no ORFs will be predicted. Supply --orf_input if you want ORF to run!", file=sys.stderr)
+    #         args.skipORF = True
+    #     if not args.gtf:
+    #         print("ERROR: if --is_fusion is on, must supply GTF as input and use --gtf!", file=sys.stderr)
+    #         sys.exit(-1)
+
+    # if args.gff3 is not None:
+    #     args.gff3 = os.path.abspath(args.gff3)
+    #     if not os.path.isfile(args.gff3):
+    #         print("ERROR: Precomputed tappAS GFF3 annoation file {0} doesn't exist. Abort!".format(args.genome), file=sys.stderr)
+    #         sys.exit(-1)
+
+    # if args.expression is not None:
+    #     if os.path.isdir(args.expression)==True:
+    #         print("Expression files located in {0} folder".format(args.expression), file=sys.stderr)
+    #     else:
+    #         for f in args.expression.split(','):
+    #             if not os.path.exists(f):
+    #                     print("Expression file {0} not found. Abort!".format(f), file=sys.stderr)
+    #                     sys.exit(-1)
+
+
+    # # path and prefix for output files
+    # if args.output is None:
+    #     args.output = os.path.splitext(os.path.basename(args.isoforms))[0]
+
+    # if args.dir is None:
+    #     args.dir = os.getcwd()
+    # else:
+    #     args.dir = os.path.abspath(args.dir)
+    #     if os.path.isdir(args.dir):
+    #         print("WARNING: output directory {0} already exists. Overwriting!".format(args.dir), file=sys.stderr)
+    #     else:
+    #         os.makedirs(args.dir)
+
+    # args.genome = os.path.abspath(args.genome)
+    # if not os.path.isfile(args.genome):
+    #     print("ERROR: genome fasta {0} doesn't exist. Abort!".format(args.genome), file=sys.stderr)
+    #     sys.exit()
+
+    # args.isoforms = os.path.abspath(args.isoforms)
+    # if not os.path.isfile(args.isoforms):
+    #     print("ERROR: Input isoforms {0} doesn't exist. Abort!".format(args.isoforms), file=sys.stderr)
+    #     sys.exit()
+
+    # if not args.gtf:
+    #     if args.aligner_choice == 'gmap':
+    #         if not os.path.isdir(os.path.abspath(args.gmap_index)):
+    #             print("GMAP index {0} doesn't exist! Abort.".format(args.gmap_index), file=sys.stderr)
+    #             sys.exit()
+    #     elif args.aligner_choice == 'deSALT':
+    #         if not os.path.isdir(os.path.abspath(args.gmap_index)):
+    #             print("deSALT index {0} doesn't exist! Abort.".format(args.gmap_index), file=sys.stderr)
+    #             sys.exit()
+
+    #     print("Cleaning up isoform IDs...", file=sys.stderr)
+    #     args.isoforms = rename_isoform_seqids(args.isoforms, args.force_id_ignore)
+    #     print("Cleaned up isoform fasta file written to: {0}".format(args.isoforms), file=sys.stderr)
+
+
+    # args.annotation = os.path.abspath(args.annotation)
+    # if not os.path.isfile(args.annotation):
+    #     print("ERROR: Annotation doesn't exist. Abort!".format(args.annotation), file=sys.stderr)
+    #     sys.exit()
+
+    # #if args.aligner_choice == "gmap":
+    # #    args.sense = "sense_force" if args.sense else "auto"
+    # #elif args.aligner_choice == "minimap2":
+    # #    args.sense = "f" if args.sense else "b"
+    # ## (Liz) turned off option for --sense, always TRUE
+    # if args.aligner_choice == "gmap":
+    #     args.sense = "sense_force"
+    # elif args.aligner_choice == "minimap2":
+    #     args.sense = "f"
+    # #elif args.aligner_choice == "deSALT":  #deSALT does not support this yet
+    # #    args.sense = "--trans-strand"
+
+
+    # args.novel_gene_prefix = None
+    # # Print out parameters so can be put into report PDF later
+    # args.doc = os.path.join(os.path.abspath(args.dir), args.output+".params.txt")
+    # print("Write arguments to {0}...".format(args.doc, file=sys.stdout))
+    # with open(args.doc, 'w') as f:
+    #     f.write("Version\t" + __version__ + "\n")
+    #     f.write("Input\t" + os.path.basename(args.isoforms) + "\n")
+    #     f.write("Annotation\t" + os.path.basename(args.annotation) + "\n")
+    #     f.write("Genome\t" + os.path.basename(args.genome) + "\n")
+    #     f.write("Aligner\t" + args.aligner_choice + "\n")
+    #     f.write("FLCount\t" + (os.path.basename(args.fl_count) if args.fl_count is not None else "NA") + "\n")
+    #     f.write("Expression\t" + (os.path.basename(args.expression) if args.expression is not None else "NA") + "\n")
+    #     f.write("Junction\t" + (os.path.basename(args.coverage) if args.coverage is not None else "NA") + "\n")
+    #     f.write("CagePeak\t" + (os.path.basename(args.cage_peak)  if args.cage_peak is not None else "NA") + "\n")
+    #     f.write("PolyA\t" + (os.path.basename(args.polyA_motif_list) if args.polyA_motif_list is not None else "NA") + "\n")
+    #     f.write("PolyAPeak\t" + (os.path.basename(args.polyA_peak)  if args.polyA_peak is not None else "NA") + "\n")
+    #     f.write("IsFusion\t" + str(args.is_fusion) + "\n")
     
-    # Running functionality
-    print("**** Running SQANTI3...", file=sys.stdout)
-    if args.chunks == 1:
-        run(args)
-        if args.isoAnnotLite:
-            corrGTF, corrSAM, corrFASTA, corrORF = get_corr_filenames(args)
-            outputClassPath, outputJuncPath = get_class_junc_filenames(args)
-            run_isoAnnotLite(corrGTF, outputClassPath, outputJuncPath, args.dir, args.output, args.gff3)
-    else:
-        split_dirs = split_input_run(args)
-        combine_split_runs(args, split_dirs)
-        shutil.rmtree(SPLIT_ROOT_DIR)
-        if args.isoAnnotLite:
-            corrGTF, corrSAM, corrFASTA, corrORF = get_corr_filenames(args)
-            outputClassPath, outputJuncPath = get_class_junc_filenames(args)
-            run_isoAnnotLite(corrGTF, outputClassPath, outputJuncPath, args.dir, args.output, args.gff3)
+    # # Running functionality
+    # print("**** Running SQANTI3...", file=sys.stdout)
+    # if args.chunks == 1:
+    #     run(args)
+    #     if args.isoAnnotLite:
+    #         corrGTF, corrSAM, corrFASTA, corrORF = get_corr_filenames(args)
+    #         outputClassPath, outputJuncPath = get_class_junc_filenames(args)
+    #         run_isoAnnotLite(corrGTF, outputClassPath, outputJuncPath, args.dir, args.output, args.gff3)
+    # else:
+    #     split_dirs = split_input_run(args)
+    #     combine_split_runs(args, split_dirs)
+    #     shutil.rmtree(SPLIT_ROOT_DIR)
+    #     if args.isoAnnotLite:
+    #         corrGTF, corrSAM, corrFASTA, corrORF = get_corr_filenames(args)
+    #         outputClassPath, outputJuncPath = get_class_junc_filenames(args)
+    #         run_isoAnnotLite(corrGTF, outputClassPath, outputJuncPath, args.dir, args.output, args.gff3)
 
 
 if __name__ == "__main__":
