@@ -2344,6 +2344,7 @@ args = Args(isoforms, annotation, odir, output, genename, min_ref_len, is_fusion
 genome_chroms = ['chr22'] # sqanti needs (qc check?)
 refs_1exon_by_chr, refs_exons_by_chr, junctions_by_chr, junctions_by_gene, start_ends_by_gene = reference_parser(args, genome_chroms)
 
+
 ## parse query isoforms
 isoforms_by_chr = isoforms_parser(args)
 
@@ -2376,18 +2377,19 @@ isoforms_by_chr = isoforms_parser(args)
 # note - orfDict is input, but results not in use for cds compare
 isoforms_info_cds = isoformClassification(args, isoforms_by_chr, refs_1exon_by_chr, refs_exons_by_chr, junctions_by_chr, junctions_by_gene, start_ends_by_gene, genome_dict, indelsJunc, orfDict)
 
-
+# %%
 # read in gencode strand and exon coordinates, needed to do perfect subset compare
-exon_annotation_fpath = os.path.abspath(ddir + 'gencode_chr22.gtf')
+# needed to remove "gene" lines so cupcake collapseGFFReader could parse
+exon_annotation_fpath = os.path.abspath(ddir + 'gencode_chr22_no_gene_lines.gtf')
 reader = collapseGFFReader(exon_annotation_fpath)
 gc_exon = {}
 for r in reader:
     gc_exon[r.seqid] = r
-cds_annotation_fpath = os.path.abspath(ddir + 'gencode_chr22_cds.gtf')
-reader = collapseGFFReader(cds_annotation_fpath)
-gc_cds = {}
-for r in reader:
-    gc_cds[r.seqid] = r
+# cds_annotation_fpath = os.path.abspath(ddir + 'gencode_chr22_cds_no_gene_lines.gtf')
+# reader = collapseGFFReader(cds_annotation_fpath)
+# gc_cds = {}
+# for r in reader:
+#     gc_cds[r.seqid] = r
 
 
 #### write out results
@@ -2429,7 +2431,7 @@ for pb, pr in isoforms_info_cds.items():
             'pr_num_exons': pr.num_exons,
             'is_nmd': tx.is_NMD * 1,
             'num_junc_after_stop_codon': tx.num_junc_after_stop,
-            'num_nt_after_stop_codon': orfDict[pb].num_3utr_nt
+            'num_nt_after_stop_codon': orfDict[pb].num_3utr_nt,
             'tx_5hang': tx_5hang,
             'tx_3hang': tx_3hang,
             'pr_5hang': pr_5hang,
