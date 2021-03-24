@@ -2378,10 +2378,23 @@ isoforms_info = isoformClassification(args, isoforms_by_chr, refs_1exon_by_chr, 
 
 #### process cds-based comparisons ####
 
+
 # updated named tuple to point to cds files (genocode, pacbio)
-# Args = namedtuple('args', 'isoform annotation dir output genename min_ref_len is_fusion corrGTF orf_tsv coverage window novel_gene_prefix')
+Args = namedtuple('args', 'isoform annotation dir output genename min_ref_len is_fusion corrGTF orf_tsv coverage window novel_gene_prefix')
+# NOTE - liz - i need to stick with these names since they are originally in sqanti input
+# for now, not changing into *_filename
+ddir = './input/'
 isoforms = os.path.abspath(ddir + 'jurkat_cds_chr22.gff')
 annotation = os.path.abspath(ddir + 'gencode_cds_chr22.gtf')
+output = 'jurkat'
+genename = None # not used, but sqanti needs
+min_ref_len = 0 # not used, but sqanti needs
+is_fusion = False # not used, but sqanti needs
+corrGTF = os.path.abspath(ddir + 'jurkat_cds_chr22.gff') 
+orf_tsv = os.path.abspath(ddir + 'jurkat_best_orf_chr22.tsv')
+coverage = None # not used, but sqanti needs
+window = None # not used, but sqanti needs
+novel_gene_prefix = None # not used, but sqanti needs
 args = Args(isoforms, annotation, odir, output, genename, min_ref_len, is_fusion, corrGTF, orf_tsv, coverage, window, novel_gene_prefix)
 
 ## parse reference transcripts(GTF) to dicts
@@ -2391,9 +2404,12 @@ refs_1exon_by_chr, refs_exons_by_chr, junctions_by_chr, junctions_by_gene, start
 ## parse query isoforms
 isoforms_by_chr, queryDict_cds = isoforms_parser(args)
 
+# dummy orfDict to let cds run
+orfDict_cds_empty = None
+
 # isoform classification
 # note - orfDict is input, but results not in use for cds compare
-isoforms_info_cds = isoformClassification(args, isoforms_by_chr, refs_1exon_by_chr, refs_exons_by_chr, junctions_by_chr, junctions_by_gene, start_ends_by_gene, genome_dict, indelsJunc, orfDict)
+isoforms_info_cds = isoformClassification(args, isoforms_by_chr, refs_1exon_by_chr, refs_exons_by_chr, junctions_by_chr, junctions_by_gene, start_ends_by_gene, genome_dict, indelsJunc, orfDict_cds_empty)
 
 
 ### code below was to read in the gencode isoforms via cupcake, because the ref
