@@ -648,6 +648,7 @@ def reference_parser(args, genome_chroms):
     else:
         ## gtf to genePred
         if not args.genename:
+            print(' '.join([GTF2GENEPRED_PROG, args.annotation, referenceFiles, '-genePredExt', '-allErrors', '-ignoreGroupsWithoutExons']))
             subprocess.call([GTF2GENEPRED_PROG, args.annotation, referenceFiles, '-genePredExt', '-allErrors', '-ignoreGroupsWithoutExons'])
         else:
             subprocess.call([GTF2GENEPRED_PROG, args.annotation, referenceFiles, '-genePredExt', '-allErrors', '-ignoreGroupsWithoutExons', '-geneNameAsName2'])
@@ -1669,6 +1670,8 @@ def isoformClassification(args, isoforms_by_chr, refs_1exon_by_chr, refs_exons_b
                         if accept_coord < isoform_hit.CDS_genomic_end:
                             num_junc_after_stop_codon += 1
                 isoform_hit.num_junc_after_stop = num_junc_after_stop_codon
+            else:
+                isoform_hit.num_junc_after_stop = -1
 
             isoforms_info[rec.id] = isoform_hit
             # fout_class.writerow(isoform_hit.as_dict())
@@ -2341,14 +2344,18 @@ if not os.path.exists(odir):
 Args = namedtuple('args', 'isoform annotation dir output genename min_ref_len is_fusion corrGTF orf_tsv coverage window novel_gene_prefix')
 # NOTE - liz - i need to stick with these names since they are originally in sqanti input
 # for now, not changing into *_filename
+# ddir = './input/'
 ddir = './input/'
-isoforms = os.path.abspath(ddir + 'jurkat_exon_chr22.gff')
-annotation = os.path.abspath(ddir + 'gencode_chr22.gtf')
+# isoforms = os.path.abspath(ddir + 'jurkat_exon_chr22.gff')
+isoforms = os.path.abspath(ddir + 'jurkat.transcript_exons_only_chr22.gtf')
+# annotation = os.path.abspath(ddir + 'gencode_chr22.gtf')
+annotation = os.path.abspath(ddir + 'gencode.v35.annotation.cds_renamed_exon_chr22.gtf')
 output = 'jurkat'
 genename = None # not used, but sqanti needs
 min_ref_len = 0 # not used, but sqanti needs
 is_fusion = False # not used, but sqanti needs
-corrGTF = os.path.abspath(ddir + 'jurkat_exon_chr22.gff') 
+# corrGTF = os.path.abspath(ddir + 'jurkat_exon_chr22.gff') 
+corrGTF = isoforms 
 orf_tsv = os.path.abspath(ddir + 'jurkat_best_orf_chr22.tsv')
 coverage = None # not used, but sqanti needs
 window = None # not used, but sqanti needs
@@ -2383,15 +2390,16 @@ isoforms_info = isoformClassification(args, isoforms_by_chr, refs_1exon_by_chr, 
 Args = namedtuple('args', 'isoform annotation dir output genename min_ref_len is_fusion corrGTF orf_tsv coverage window novel_gene_prefix')
 # NOTE - liz - i need to stick with these names since they are originally in sqanti input
 # for now, not changing into *_filename
-ddir = './input/'
-isoforms = os.path.abspath(ddir + 'jurkat_cds_chr22.gff')
-annotation = os.path.abspath(ddir + 'gencode_cds_chr22.gtf')
+
+# isoforms = os.path.abspath(ddir + 'jurkat_cds_chr22.gff')
+isoforms = os.path.abspath(ddir + 'jurkat.cds_renamed_exon_chr22.gtf')
+# annotation = os.path.abspath(ddir + 'gencode_cds_chr22.gtf')
+annotation = os.path.abspath(ddir + 'gencode.v35.annotation.cds_renamed_exon_chr22.gtf')
 output = 'jurkat'
 genename = None # not used, but sqanti needs
 min_ref_len = 0 # not used, but sqanti needs
 is_fusion = False # not used, but sqanti needs
-corrGTF = os.path.abspath(ddir + 'jurkat_cds_chr22.gff') 
-orf_tsv = os.path.abspath(ddir + 'jurkat_best_orf_chr22.tsv')
+corrGTF = isoforms 
 coverage = None # not used, but sqanti needs
 window = None # not used, but sqanti needs
 novel_gene_prefix = None # not used, but sqanti needs
@@ -2432,7 +2440,7 @@ isoforms_info_cds = isoformClassification(args, isoforms_by_chr, refs_1exon_by_c
 #### write out results
 #### note - need to get "perfect subset" data while write-out
 ofile = open('./output/sqanti_protein_classification_info_chr22.tsv', 'w')
-FIELDNAMES = ['pb', 'tx_cat', 'pr_cat', 'tx_subcat', 'pr_subcat', 'tx_tss_diff', 'tx_tts_diff', 'tx_tss_gene_diff', 'tx_tts_gene_diff', 'pr_tss_diff', 'pr_tts_diff', 'pr_tss_gene_diff', 'pr_tts_gene_diff', 'tx_transcripts', 'pr_transcripts', 'tx_gene', 'pr_gene', 'tx_num_exons', 'pr_num_exons', 'is_nmd', 'num_junc_after_stop_codon', 'num_nt_after_stop_codon', 'tx_5hang', 'tx_3hang', 'pr_5hang', 'pr_3hang']
+FIELDNAMES = ['pb', 'tx_cat', 'pr_cat', 'tx_subcat', 'pr_subcat', 'tx_tss_diff', 'tx_tts_diff', 'tx_tss_gene_diff', 'tx_tts_gene_diff', 'pr_nterm_diff', 'pr_cterm_diff', 'pr_nterm_gene_diff', 'pr_cterm_gene_diff', 'tx_transcripts', 'pr_transcripts', 'tx_gene', 'pr_gene', 'tx_num_exons', 'pr_num_exons', 'is_nmd', 'num_junc_after_stop_codon', 'num_nt_after_stop_codon', 'tx_5hang', 'tx_3hang', 'pr_ntermhang', 'pr_ctermhang']
 writer = DictWriter(ofile, delimiter='\t', fieldnames=FIELDNAMES)
 writer.writeheader()
 for pb, pr in isoforms_info_cds.items():
@@ -2466,10 +2474,10 @@ for pb, pr in isoforms_info_cds.items():
             'tx_tts_diff': tx.tts_diff,
             'tx_tss_gene_diff': tx.tss_gene_diff,
             'tx_tts_gene_diff': tx.tts_gene_diff,
-            'pr_tss_diff': pr.tss_diff,
-            'pr_tts_diff': pr.tts_diff,
-            'pr_tss_gene_diff': pr.tss_gene_diff,
-            'pr_tts_gene_diff': pr.tts_gene_diff,
+            'pr_nterm_diff': pr.tss_diff,
+            'pr_cterm_diff': pr.tts_diff,
+            'pr_nterm_gene_diff': pr.tss_gene_diff,
+            'pr_cterm_gene_diff': pr.tts_gene_diff,
             'tx_transcripts': ','.join(tx.transcripts),
             'pr_transcripts': ','.join(pr.transcripts),
             'tx_gene': ','.join(tx.genes),
@@ -2481,8 +2489,8 @@ for pb, pr in isoforms_info_cds.items():
             'num_nt_after_stop_codon': orfDict[pb].num_3utr_nt,
             'tx_5hang': tx_5hang,
             'tx_3hang': tx_3hang,
-            'pr_5hang': pr_5hang,
-            'pr_3hang': pr_3hang
+            'pr_ntermhang': pr_5hang,
+            'pr_ctermhang': pr_3hang
             }
     writer.writerow(info)
 
